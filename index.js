@@ -19,8 +19,8 @@ app.post("/webhook/gps", async (req, res) => {
 
     const { imei, lat, lng, speed, provider, vehicle_no, device_ts } = data;
 
-    // insert into Supabase table
-    const { error } = await supabase.from("realtime_locations").insert({
+    // 1️⃣ Insert into historical table
+    const { error: insertError } = await supabase.from("realtime_locations").insert({
       imei,
       lat,
       lng,
@@ -31,12 +31,31 @@ app.post("/webhook/gps", async (req, res) => {
       received_at: new Date().toISOString()
     });
 
-    if (error) {
-      console.error("Supabase error:", error);
-      return res.status(500).json({ status: "db_error", error });
+    if (insertError) {
+      console.error("Insert Error:", insertError);
+    }
+
+    // 2️⃣ Upsert into latest_locations
+    const { error: upsertError } = await supabase
+      .from("latest_locations")
+      .upsert({
+        imei,
+        lat,
+        lng,
+        speed,
+        provider,
+        vehicle_no,
+        device_ts,
+        received_at: new Date().toISOString()
+      });
+
+    if (upsertError) {
+      console.error("Upsert Error:", upsertError);
+      return res.status(500).json({ status: "upsert_error", error: upsertError });
     }
 
     return res.json({ status: "success" });
+
   } catch (err) {
     console.error("Server error:", err);
     return res.status(500).json({ status: "server_error" });
