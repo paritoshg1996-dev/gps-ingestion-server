@@ -1,0 +1,13 @@
+{
+  "name": "gps-ingestion-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "express": "^4.19.2",
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
