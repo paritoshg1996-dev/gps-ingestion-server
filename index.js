@@ -23,8 +23,8 @@ const supabase = createClient(
 );
 
 // Normalize function using auto-detection
-function normalize(req) {
-  const provider = detectProvider(req);
+async function normalize(req) {
+  const provider = await detectProvider(req);
 
   switch (provider) {
     case "atlantasys":
@@ -47,22 +47,20 @@ function normalize(req) {
 // Main GPS ingestion endpoint
 app.post("/webhook/gps", async (req, res) => {
   try {
-    const gps = normalize(req);
+    const gps = await normalize(req);
 
     if (!gps || !gps.imei || !gps.lat || !gps.lng) {
-      console.log("Invalid data:", req.body, req.query);
+      console.log("Invalid:", req.body, req.query);
       return res.status(400).json({ status: "invalid_format" });
     }
 
-    console.log("Provider:", gps.provider, "Normalized:", gps);
+    console.log("Detected provider:", gps.provider, "Normalized:", gps);
 
-    // 1️⃣ Insert into realtime history
     await supabase.from("realtime_locations").insert({
       ...gps,
       received_at: new Date().toISOString()
     });
 
-    // 2️⃣ Upsert into latest_locations
     await supabase.from("latest_locations").upsert({
       ...gps,
       received_at: new Date().toISOString()
@@ -71,7 +69,7 @@ app.post("/webhook/gps", async (req, res) => {
     return res.json({ status: "success" });
 
   } catch (err) {
-    console.error("Server error:", err);
+    console.error(err);
     return res.status(500).json({ status: "server_error" });
   }
 });
