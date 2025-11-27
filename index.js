@@ -25,11 +25,9 @@ const supabase = createClient(
 );
 
 /* --------------------------------------------------------
-   1️⃣  API Key Authentication (MUST COME BEFORE EVERYTHING)
+   1️⃣  API Key Authentication
 ---------------------------------------------------------*/
 async function authenticateTransporter(req) {
-  // api_key can be passed either as:
-  // ?api_key=xxxx OR header: x-api-key: xxxx
   const api_key = req.query.api_key || req.header("x-api-key");
 
   if (!api_key) return null;
@@ -74,7 +72,6 @@ async function normalize(req) {
 ---------------------------------------------------------*/
 app.post("/webhook/gps", async (req, res) => {
   try {
-    // Authenticate transporter first
     const transporter_id = await authenticateTransporter(req);
 
     if (!transporter_id) {
@@ -84,7 +81,6 @@ app.post("/webhook/gps", async (req, res) => {
       });
     }
 
-    // Normalize GPS packet
     const gps = await normalize(req);
 
     if (!gps || !gps.imei || !gps.lat || !gps.lng) {
@@ -92,7 +88,6 @@ app.post("/webhook/gps", async (req, res) => {
       return res.status(400).json({ status: "invalid_format" });
     }
 
-    // Attach transporter to GPS object
     gps.transporter_id = transporter_id;
 
     console.log(
@@ -101,13 +96,11 @@ app.post("/webhook/gps", async (req, res) => {
       "GPS:", gps
     );
 
-    // Insert into history
     await supabase.from("realtime_locations").insert({
       ...gps,
       received_at: new Date().toISOString()
     });
 
-    // Upsert into latest
     await supabase.from("latest_locations").upsert({
       ...gps,
       received_at: new Date().toISOString()
@@ -122,8 +115,30 @@ app.post("/webhook/gps", async (req, res) => {
 });
 
 /* --------------------------------------------------------
-   4️⃣  Start Server
+   4️⃣  Live Map Endpoint — returns vehicles with online/idle/offline status
+---------------------------------------------------------*/
+app.get("/vehicles/live", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("latest_locations_with_status")
+      .select("imei, lat, lng, speed, transporter_id, status");
+
+    if (error) {
+      console.error("DB error:", error);
+      return res.status(500).json({ status: "db_error" });
+    }
+
+    return res.json(data);
+
+  } catch (err) {
+    console.error("Server error:", err);
+    return res.status(500).json({ status: "server_error" });
+  }
+});
+
+/* --------------------------------------------------------
+   5️⃣  Start Server
 ---------------------------------------------------------*/
 app.listen(3000, () =>
-  console.log("GPS server with API auth + auto-detection running")
+  console.log("GPS server with API auth + auto-detection + live map endpoint running")
 );
