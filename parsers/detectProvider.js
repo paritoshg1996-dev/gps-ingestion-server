@@ -1,44 +1,64 @@
-// Detect provider based on payload structure
+import { createClient } from "@supabase/supabase-js";
 
-export function detectProvider(req) {
-  const body = req.body;
-  const query = req.query;
+// Supabase client (read-only use)
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-  // 1️⃣ Explicit provider parameter always wins
-  if (query.provider) return query.provider.toLowerCase();
-  if (body.provider) return body.provider.toLowerCase();
+// Convert req into a unified key list
+function extractKeys(req) {
+  const keys = new Set();
 
-  // 2️⃣ Wheelseye format auto-detect
-  if (body && body.deviceId && body.latitude && body.longitude) {
-    return "wheelseye";
+  // query keys
+  Object.keys(req.query || {}).forEach(k => keys.add(k.toLowerCase()));
+
+  // body keys (if JSON)
+  if (typeof req.body === "object" && req.body !== null) {
+    Object.keys(req.body).forEach(k => keys.add(k.toLowerCase()));
   }
 
-  // 3️⃣ MapMyIndia format auto-detect
-  if (query.i && query.la && query.lo) {
-    return "mapmyindia";
+  return keys;
+}
+
+export async function detectProvider(req) {
+  const keys = extractKeys(req);
+
+  // 1️⃣ FIRST — Check DB registry
+  const { data: providers } = await supabase
+    .from("gps_provider_registry")
+    .select()
+    .order("priority", { ascending: true });
+
+  for (const provider of providers) {
+    const match = provider.signature_keys.every(sig =>
+      keys.has(sig.toLowerCase())
+    );
+
+    if (match) {
+      return provider.id.toLowerCase();
+    }
   }
 
-  // 4️⃣ Atlantasyss format auto-detect
-  // Common fields: lat + lon + spd + imei in query
-  if (query.lat && query.lon && query.spd && query.imei) {
-    return "atlantasys";
-  }
-
-  // 5️⃣ AIS-140 detection (starts with $$)
-  if (typeof body === "string" && body.startsWith("$$")) {
+  // 2️⃣ Second — Hard-coded FALLBACKS
+  if (req.body && typeof req.body === "string" && req.body.startsWith("$$"))
     return "ais140";
-  }
 
-  // 6️⃣ If it has imei, lat, lng in JSON → generic standardized
-  if (body && body.imei && (body.lat || body.latitude)) {
+  if (req.body?.deviceId && req.body?.latitude)
+    return "wheelseye";
+
+  if (req.query.i && req.query.la && req.query.lo)
+    return "mapmyindia";
+
+  if (req.query.imei && req.query.lat && req.query.lon)
+    return "atlantasys";
+
+  if (req.body?.imei && req.body?.lat)
     return "generic";
-  }
 
-  // 7️⃣ If it has imei + lat in query → generic
-  if (query.imei && (query.lat || query.la)) {
+  if (req.query?.imei && req.query?.lat)
     return "generic";
-  }
 
-  // 8️⃣ Default fallback
+  // 3️⃣ Last — Full fallback
   return "generic";
 }
