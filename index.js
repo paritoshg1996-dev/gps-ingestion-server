@@ -14,6 +14,7 @@ import { parseGeneric } from "./parsers/generic.js";
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.text());   //  REQUIRED for AIS-140 raw packets
 
 // Supabase setup
 const supabase = createClient(
